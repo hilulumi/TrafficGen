@@ -15,23 +15,23 @@
 class Host_IP{
 private:
 	struct in_addr ip;
-	unsigned short port;
+	unsigned short int port;
 public:
 	Host_IP();
 	Host_IP(unsigned long, unsigned short);
 	Host_IP(std::string, unsigned short);
 	Host_IP(std::string);
 	~Host_IP();
-	unsigned long getaddr();
+	unsigned long int getaddr() const;
 	void setaddr(std::string);
 	void setaddr(unsigned long);
-	unsigned short getport();
+	unsigned short int getport() const;
 	void setport(unsigned short);
 	void sethost(std::string);
 };
 
 Host_IP::Host_IP(){
-	setport(p);
+	setport(8989);
 	setaddr("192.168.0.11");
 }
 
@@ -53,7 +53,7 @@ Host_IP::~Host_IP(){
 
 }
 
-unsigned long Host_IP::getaddr(){
+unsigned long int Host_IP::getaddr()const{
 	return ip.s_addr;
 }
 
@@ -65,7 +65,7 @@ void Host_IP::setaddr(unsigned long addr){
 	ip.s_addr = addr;
 }
 
-unsigned short Host_IP::getport(){
+unsigned short int Host_IP::getport() const{
 	return port;
 }
 

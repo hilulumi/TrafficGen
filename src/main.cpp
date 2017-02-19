@@ -13,6 +13,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/ether.h>
+#include <netinet/ip.h>
 #include <net/if.h>
 #include <thread>
 #include <iostream>
@@ -22,7 +23,7 @@
 
 #include "Host_IP.hpp"
 
-#define LONGOPT "S:s::F:c::f:L:l:p:t:i:"
+#define LONGOPT "s:F:c:f:L:l:p:t:i:"
 #define DEFAULT_DISTR "weibull, 1, 1"
 
 using namespace std;
@@ -38,17 +39,17 @@ int main(int argc, char* argv[]){
 	std::string FlowLen(DEFAULT_DISTR);
 	std::string PktLen(DEFAULT_DISTR);
 	struct ifreq Interface;
-	struct ip iphdr;
+	//struct ip iphdr;
 	std::vector<Host_IP> Servers, Clients;
 	Host_IP tmphost;
 
 	while(1){
 
 		static struct option long_options[]={
-			{"server num",		required_argument,	0,	'S'},
-			{"server hosts",	optional_argument,	0,	's'},
+			//{"server num",		required_argument,	0,	'S'},
+			{"server hosts",	required_argument,	0,	's'},
 			{"active flows",	required_argument,	0,	'F'},
-			{"client hosts",	optional_argument,	0,	'c'},
+			{"client hosts",	required_argument,	0,	'c'},
 			{"flow arrival",	required_argument,	0,	'f'},
 			{"flow length",		required_argument,	0,	'L'},
 			{"pkt length",		required_argument,	0,	'l'},
@@ -64,13 +65,14 @@ int main(int argc, char* argv[]){
 			break;
 
 		switch(c){
-			case 'S':
+			/*case 'S':
 				ServerNum = atoi(optarg);
 				break;
-
+			*/
 			case 's':
 				if(optarg)
 					ServerHostFile = optarg;
+
 				break;
 
 			case 'F':
@@ -110,6 +112,7 @@ int main(int argc, char* argv[]){
 				break;
 
 			default:
+				break;
 		}
 	}
 
@@ -132,9 +135,19 @@ int main(int argc, char* argv[]){
 		}
 	}
 	else{
+		std::fstream file(ServerHostFile, std::fstream::in);
+		char buf[30];
+
+		while(file.getline(buf, 30)){
+			tmphost.sethost(std::string(buf));
+			Servers.push_back(tmphost);
+		}
+	}
+	for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++){
+				std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
 
 	}
-
+	return 0;
 
 }
 
