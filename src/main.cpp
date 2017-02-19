@@ -46,7 +46,6 @@ int main(int argc, char* argv[]){
 	while(1){
 
 		static struct option long_options[]={
-			//{"server num",		required_argument,	0,	'S'},
 			{"server hosts",	required_argument,	0,	's'},
 			{"active flows",	required_argument,	0,	'F'},
 			{"client hosts",	required_argument,	0,	'c'},
@@ -65,10 +64,6 @@ int main(int argc, char* argv[]){
 			break;
 
 		switch(c){
-			/*case 'S':
-				ServerNum = atoi(optarg);
-				break;
-			*/
 			case 's':
 				if(optarg)
 					ServerHostFile = optarg;
@@ -122,6 +117,7 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 
+	/*Get Server Host(s)*/
 	if(ServerHostFile == NULL){
 		if(IfName != NULL){
 			memset(&Interface, 0, sizeof(Interface));
@@ -143,10 +139,14 @@ int main(int argc, char* argv[]){
 			Servers.push_back(tmphost);
 		}
 	}
-	for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++){
-				std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+	/*
+	   for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
+		std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+	*/
 
-	}
+
+
+
 	return 0;
 
 }
