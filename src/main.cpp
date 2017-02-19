@@ -20,7 +20,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
-
+#include <algorithm>
 #include "Host_IP.hpp"
 
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
@@ -41,6 +41,7 @@ int main(int argc, char* argv[]){
 	struct ifreq Interface;
 	//struct ip iphdr;
 	std::vector<Host_IP> Servers, Clients;
+	std::vector<Host_IP>::iterator host_it;
 	Host_IP tmphost;
 
 	while(1){
@@ -136,7 +137,8 @@ int main(int argc, char* argv[]){
 
 		while(file.getline(buf, 30)){
 			tmphost.sethost(std::string(buf));
-			Servers.push_back(tmphost);
+			if(std::find(Servers.begin(), Servers.end(), tmphost) == Servers.end())
+				Servers.push_back(tmphost);
 		}
 	}
 	/*
