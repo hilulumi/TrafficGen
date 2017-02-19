@@ -24,6 +24,7 @@ public:
 	~Host_IP();
 	unsigned long getaddr();
 	void setaddr(std::string);
+	void setaddr(unsigned long);
 	unsigned short getport();
 	void setport(unsigned short);
 	void sethost(std::string);
@@ -58,6 +59,10 @@ unsigned long Host_IP::getaddr(){
 
 void Host_IP::setaddr(std::string addr){
 	inet_aton(addr.c_str(), &ip);
+}
+
+void Host_IP::setaddr(unsigned long addr){
+	ip.s_addr = addr;
 }
 
 unsigned short Host_IP::getport(){

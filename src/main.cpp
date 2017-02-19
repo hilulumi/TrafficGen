@@ -18,6 +18,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include "Host_IP.hpp"
 
@@ -38,7 +39,8 @@ int main(int argc, char* argv[]){
 	std::string PktLen(DEFAULT_DISTR);
 	struct ifreq Interface;
 	struct ip iphdr;
-
+	std::vector<Host_IP> Servers, Clients;
+	Host_IP tmphost;
 
 	while(1){
 
@@ -125,7 +127,12 @@ int main(int argc, char* argv[]){
 				perror("Interface, SIOCGIFADDR");
 				exit(-1);
 			}
+			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
+			Servers.push_back(tmphost);
 		}
+	}
+	else{
+
 	}
 
 
