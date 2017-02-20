@@ -28,6 +28,7 @@ public:
 	unsigned short int getport() const;
 	void setport(unsigned short);
 	void sethost(std::string);
+	void sethost(unsigned long, unsigned short);
 	bool operator ==(const Host_IP &) const;
 };
 
@@ -79,6 +80,11 @@ void Host_IP::sethost(std::string h){
 
 	inet_aton(h.substr(0,split).c_str(), &ip);
 	port = htons(atoi(h.substr(split+1).c_str()));
+}
+
+void Host_IP::sethost(unsigned long addr, unsigned short p){
+	setaddr(addr);
+	setport(p);
 }
 
 bool Host_IP::operator ==(const Host_IP &H) const{

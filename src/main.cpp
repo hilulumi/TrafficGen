@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <random>
 #include "Host_IP.hpp"
 
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
@@ -43,6 +44,9 @@ int main(int argc, char* argv[]){
 	std::vector<Host_IP> Servers, Clients;
 	std::vector<Host_IP>::iterator host_it;
 	Host_IP tmphost;
+	char buf[30];
+
+	std::default_random_engine generator(time(NULL));
 
 	while(1){
 
@@ -130,11 +134,14 @@ int main(int argc, char* argv[]){
 			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
 			Servers.push_back(tmphost);
 		}
+		else{
+			std::cout << "Must specify either Interface or Server hosts\n";
+			exit(-1);
+		}
+
 	}
 	else{
 		std::fstream file(ServerHostFile, std::fstream::in);
-		char buf[30];
-
 		while(file.getline(buf, 30)){
 			tmphost.sethost(std::string(buf));
 			if(std::find(Servers.begin(), Servers.end(), tmphost) == Servers.end())
@@ -142,13 +149,38 @@ int main(int argc, char* argv[]){
 		}
 	}
 	/*
-	   for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
-		std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+		for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
+			std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+		cout<<endl<<endl;
 	*/
 
+	/*Get Client Hosts*/
+	if(ClientHostFile == NULL){
+		int clientnum = 1 + (ActiveFlows-1)/Servers.size();
+		std::uniform_int_distribution<unsigned long> d1(1,4294967295);
+		std::uniform_int_distribution<unsigned short> d2(1,65535);
+		int i=0;
 
-
-
+		while(i<clientnum){
+			tmphost.sethost(htonl(d1(generator)), htons(d2(generator)));
+			if(std::find(Clients.begin(), Clients.end(), tmphost) == Clients.end()){
+				Clients.push_back(tmphost);
+				i++;
+			}
+		}
+	}
+	else{
+		std::fstream file(ClientHostFile, std::fstream::in);
+		while(file.getline(buf, 30)){
+			tmphost.sethost(std::string(buf));
+			if(std::find(Clients.begin(), Clients.end(), tmphost) == Clients.end())
+				Clients.push_back(tmphost);
+		}
+	}
+	/*
+		for(std::vector<Host_IP>::const_iterator i=Clients.begin(); i!=Clients.end(); i++)
+			std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+	*/
 	return 0;
 
 }
