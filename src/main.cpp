@@ -7,22 +7,18 @@
 #include <stdlib.h>
 #include <time.h>
 #include <getopt.h>
-#include <linux/if_packet.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <netinet/ether.h>
-#include <netinet/ip.h>
-#include <net/if.h>
-#include <thread>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <random>
-#include "Host_IP.hpp"
+#include <sstream>
+#include "Flow.hpp"
 
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
 #define DEFAULT_DISTR "weibull, 1, 1"
@@ -34,19 +30,21 @@ using namespace std;
 int main(int argc, char* argv[]){
 	int c, sockfd;
 	int ServerNum = 1, ActiveFlows = 1, duration = 10;
-	char *ServerHostFile = NULL, *ClientHostFile = NULL, *IfName = NULL;
+	char *ServerHostFile = NULL, *ClientHostFile = NULL, *IfName = NULL, *PktFile=NULL;
 	std::string FlowArrival(DEFAULT_DISTR);
 	std::string PktArrival(DEFAULT_DISTR);
 	std::string FlowLen(DEFAULT_DISTR);
 	std::string PktLen(DEFAULT_DISTR);
 	struct ifreq Interface;
 	//struct ip iphdr;
-	std::vector<Host_IP> Servers, Clients;
-	std::vector<Host_IP>::iterator host_it;
+	vector<Host_IP> Servers, Clients;
+	vector<Host_IP>::iterator host_it;
 	Host_IP tmphost;
 	char buf[30];
+	vector<vector<double>> PktDist;
+	fstream PktDistF;
 
-	std::default_random_engine generator(time(NULL));
+	std::default_random_engine generator(std::random_device{}());
 
 	while(1){
 
@@ -97,7 +95,7 @@ int main(int argc, char* argv[]){
 				break;
 
 			case 'p':
-				PktLen = optarg;
+				PktFile = optarg;
 				break;
 
 			case 't':
@@ -115,6 +113,11 @@ int main(int argc, char* argv[]){
 				break;
 		}
 	}
+
+	if(PktFile == NULL){
+			std::cout << "Must specify a Packet Distribution File\n";
+			exit(-1);
+		}
 
 	sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
 	if(sockfd < 0){
@@ -181,6 +184,32 @@ int main(int argc, char* argv[]){
 		for(std::vector<Host_IP>::const_iterator i=Clients.begin(); i!=Clients.end(); i++)
 			std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
 	*/
+
+	/*Get Packet length and protocol distribution*/
+	PktDistF.open(PktFile, std::fstream::in);
+	std::string line;
+	while(std::getline(PktDistF, line)){
+		std::istringstream iss(line);
+		double number = 0.0;
+	    std::vector<double> W;
+	    while (iss >> number)
+	    	W.push_back(number);
+
+	    // add line to vector
+		PktDist.push_back(W);
+	}
+	/*
+	    std::cout.precision(14);
+		for(int i=0; i<PktDist.size();i++){
+			for(int j=0; j<PktDist[i].size();j++)
+				std::cout<<PktDist[i][j]<<" ";
+			std::cout<<std::endl;
+		}
+
+	 */
+
+
+
 	return 0;
 
 }

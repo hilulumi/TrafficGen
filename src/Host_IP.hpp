@@ -4,13 +4,12 @@
  *  Created on: Feb 19, 2017
  *      Author: phoebe
  */
-#include <arpa/inet.h>
-#include <string>
 
 #ifndef HOST_IP_HPP_
 #define HOST_IP_HPP_
 
-
+#include <arpa/inet.h>
+#include <string>
 
 class Host_IP{
 private:
