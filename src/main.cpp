@@ -19,7 +19,7 @@
 #include <random>
 #include <sstream>
 #include "Flow.hpp"
-
+#include <cstdio>
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
 #define DEFAULT_DISTR "weibull, 1, 1"
 
@@ -136,6 +136,16 @@ int main(int argc, char* argv[]){
 			}
 			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
 			Servers.push_back(tmphost);
+			/*Get Host MAC address*/
+			memset(&Interface, 0, sizeof(Interface));
+			strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
+			if(ioctl(sockfd, SIOCGIFHWADDR, &Interface)< 0){
+				perror("Interface, SIOCGIFHWADDR");
+				exit(-1);
+			}
+			//unsigned char mac_address[6];
+			//memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
+			//printf("%02x:%02x:%02x:%02x:%02x:%02x\n",mac_address[0],mac_address[1],mac_address[2],mac_address[3],mac_address[4],mac_address[5]);
 		}
 		else{
 			std::cout << "Must specify either Interface or Server hosts\n";
