@@ -69,3 +69,11 @@ bool Host_IP::operator ==(const Host_IP &H) const{
 
 	return true;
 }
+
+Host_IP& Host_IP::operator=(const Host_IP& host){
+	if(this != &host){
+		ip.s_addr = host.ip.s_addr;
+		port = host.port;
+	}
+	return *this;
+}

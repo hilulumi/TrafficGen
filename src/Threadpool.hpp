@@ -8,36 +8,43 @@
 #ifndef THREADPOOL_HPP_
 #define THREADPOOL_HPP_
 
+#include <mutex>
 #include <thread>
 #include <functional>
 #include <boost/lockfree/queue.hpp>
 
-namespace Treadpool{
+namespace Threadpool{
+
+class Worker;
+class Threadpool;
 
 namespace Job{
 enum class Type {NORMAL, FINCALL};
-std::function<Job::Type()> callback;
+typedef std::function<Type(Worker&)> callback;
 }
-
-class Treadpool;
 
 class Worker{
 	friend class Treadpool;
+
 private:
 
 public:
 
 };
 
-class Treadpool{
+class Threadpool{
 	friend class Worker;
-private:
 
+private:
+	boost::lockfree::queue<Job::callback*> JobQ;
+	std::mutex job_signal;
 public:
 
 };
 
 }
+
+#endif /* THREADPOOL_HPP_ */
 
 
 

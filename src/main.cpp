@@ -18,8 +18,9 @@
 #include <algorithm>
 #include <random>
 #include <sstream>
-#include "Flow.hpp"
 #include <cstdio>
+#include "Flow.hpp"
+#include "Threadpool.hpp"
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
 #define DEFAULT_DISTR "weibull, 1, 1"
 
@@ -218,6 +219,9 @@ int main(int argc, char* argv[]){
 
 	 */
 
+	/*TEST*/
+	Traffic::ETHER_h E;
+	Traffic::Flow A(0, E);
 
 	return 0;
 

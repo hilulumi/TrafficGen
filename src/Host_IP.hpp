@@ -28,6 +28,7 @@ public:
 	void sethost(std::string);
 	void sethost(unsigned long, unsigned short);
 	bool operator ==(const Host_IP &) const;
+	Host_IP& operator=(const Host_IP&);
 };
 
 
