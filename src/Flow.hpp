@@ -11,6 +11,7 @@
 #include "Raw_Pkt.hpp"
 #include <time.h>
 #include <random>
+#include <algorithm>
 
 
 
@@ -25,7 +26,6 @@ private:
 	int start_id;
 	unsigned long sent_byte;
 	struct timespec arrival_time; //flow arrival time
-	std::default_random_engine generator;
 	ETHER_h ether;
 	Host_IP src, dst;
 	bool ipv4;
@@ -33,6 +33,8 @@ private:
 	Raw_Packet *pkt; // current pkt to be sent
 
 public:
+	std::default_random_engine generator;
+
 	Flow(int timer_v, ETHER_h& ether_v){
 		std::uniform_int_distribution<int> D(1,16384);
 		generator.seed(std::random_device{}());
@@ -41,7 +43,7 @@ public:
 		clock_gettime(CLOCK_REALTIME, &(arrival_time));
 		std::memcpy(&ether, &ether_v, ETHERLEN);
 		ipv4 = true;
-		type = Protocol::TCP;
+		type = Protocol::UNKNOWN;
 		flow_length = 0;
 		src = Host_IP();
 		dst = Host_IP();
@@ -58,19 +60,31 @@ public:
 		arrival_time.tv_nsec = time.tv_nsec;
 		arrival_time.tv_sec = time.tv_sec;
 	}
-	/*Call From Worker*/
-	void setFlow(Host_IP& shost, Host_IP& dhost, bool v4, Protocol t, int len){
+
+	/*
+	 * Set the New Flow including the first packet and the protocols
+	 * P.S. Call From Worker
+	 */
+	void setFlow(Host_IP& shost, Host_IP& dhost, int len, std::vector<std::vector<double>>& PktDist){
 		std::uniform_int_distribution<int> D(1,16384);
+		generator.seed(std::random_device{}());
 		start_id = D(generator);
 		sent_pkt = 0;
 		sent_byte = 0;
 		src = shost;
 		dst = dhost;
-		ipv4 = v4;
-		type = t;
 		flow_length = len;
+		type = Protocol::UNKNOWN;
+		int pktlen = getPktLen(PktDist);
+		setProtocol(pktlen, PktDist);
+		genPkt(pktlen);
 	}
-	void setPkt(size_t pktlen){
+	/*
+	 * Assign a new packet to the flow
+	 */
+	void genPkt(size_t pktlen){
+		delete pkt;
+		pkt = NULL;
 		switch(type){
 			case Protocol::TCP:
 				if(ipv4) pkt = new TCP_t<IPV4_t>(src, dst, ether, pktlen);
@@ -90,6 +104,50 @@ public:
 			default:
 				if(ipv4) pkt = new IPV4_t(src, dst, ether, pktlen);
 				else pkt = new IPV6_t(src, dst, ether, pktlen);
+		}
+	}
+	/*
+	 * Get a length for the new packet
+	 */
+	int getPktLen(std::vector<std::vector<double>>& PktDist){
+		int startIdx;
+		if(((type == Protocol::UDP || type == Protocol::ICMP) && ipv4) || type == Protocol::UNKNOWN)
+			startIdx = 0; //start len 28
+		else if(ipv4)
+			startIdx = 12; //start len 40
+		else if(type !=
+				Protocol::TCP) startIdx = 20;  //start len 48
+		else
+			startIdx = 32; //start len 60
+
+		std::uniform_real_distribution<double> D(PktDist[0][startIdx], PktDist[0][PktDist[0].size()-1]);
+		return (std::upper_bound(PktDist[0].begin()+startIdx, PktDist[0].end(), D(generator)) - PktDist[0].begin() + 28);
+	}
+
+	void setProtocol(int pktlen, std::vector<std::vector<double>>& PktDist){
+		int used_v, p_idx;
+		auto setType = [](int idx, Protocol& t, bool& v4)mutable{
+			switch(idx){
+				case 0:{t = Protocol::TCP; v4 = true;}break;
+				case 1:{t = Protocol::UDP; v4 = true;}break;
+				case 2:{t = Protocol::ICMP; v4 = true;}break;
+				case 3:{t = Protocol::ICMP; v4 = false;}break;
+				case 4:{t = Protocol::ICMP; v4 = false;}break;
+				case 5:{t = Protocol::ICMP; v4 = false;}break;
+				default:{t = Protocol::UNKNOWN;}
+			}
+		};
+
+		if(pktlen < 40) used_v = 1;
+		else if(pktlen < 48) used_v = 2;
+		else if(pktlen < 60) used_v = 3;
+		else used_v = 4;
+		std::uniform_real_distribution<double> D(0, PktDist[used_v][PktDist[used_v].size()-1]);
+		p_idx = std::upper_bound(PktDist[used_v].begin(), PktDist[used_v].end(), D(generator)) - PktDist[used_v].begin();
+		setType(p_idx, type, ipv4);
+		if(type == Protocol::UNKNOWN){
+			std::cout << "Wrong Packet Distribution File\n";
+			exit(-1);
 		}
 	}
 };

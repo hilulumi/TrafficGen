@@ -4,46 +4,69 @@
  *  Created on: Feb 18, 2017
  *      Author: phoebe
  */
-#include <stdlib.h>
-#include <time.h>
-#include <getopt.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <iostream>
+#include <cstdio>
 #include <fstream>
-#include <string>
-#include <vector>
-#include <algorithm>
+#include <iostream>
 #include <random>
 #include <sstream>
-#include <cstdio>
+#include <string>
+#include <vector>
+#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/timerfd.h>
+#include <time.h>
+#include <unistd.h>
 #include "Flow.hpp"
 #include "Threadpool.hpp"
+
+
+
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
-#define DEFAULT_DISTR "weibull, 1, 1"
+#define DEFAULT_DISTR "weibull(1,1)"
+
+u_int8_t DstMac[6] = {0x34, 0x97, 0xF6, 0x33, 0x5E, 0xE9};
 
 using namespace std;
 
+int ResolveModel(string S, Threadpool::Prob::Model &t, int &a, int &b){
+    char *x = new char[S.size()];
+    strncpy(x, S.c_str(), S.size());
+    char* pch;
+    char *pinta, *pintb;
+    pch = strtok (x,"(");
+    pinta = strtok (NULL," ,");
+    pintb = strtok (NULL," )");
+    pch = strtok (pch," ");
+    string tmp(pch);
+    a = atoi(pinta);
+    b = atoi(pintb);
+    if(tmp == "weibull")
+    	t = Threadpool::Prob::Model::Weibull;
+    else if(tmp == "lognormal")
+    	t = Threadpool::Prob::Model::Lognormal;
+    else if(tmp == "poisson")
+    	t = Threadpool::Prob::Model::Poisson;
+    else
+    	return -1;
+
+    return 0;
+}
 
 
 int main(int argc, char* argv[]){
-	int c, sockfd;
+	int c;
 	int ServerNum = 1, ActiveFlows = 1, duration = 10;
 	char *ServerHostFile = NULL, *ClientHostFile = NULL, *IfName = NULL, *PktFile=NULL;
 	std::string FlowArrival(DEFAULT_DISTR);
 	std::string PktArrival(DEFAULT_DISTR);
 	std::string FlowLen(DEFAULT_DISTR);
-	std::string PktLen(DEFAULT_DISTR);
-	struct ifreq Interface;
-	//struct ip iphdr;
-	vector<Host_IP> Servers, Clients;
-	vector<Host_IP>::iterator host_it;
-	Host_IP tmphost;
-	char buf[30];
-	vector<vector<double>> PktDist;
-	fstream PktDistF;
+	//std::string PktLen(DEFAULT_DISTR);    To be done: packet length using distribution models
+
 
 	std::default_random_engine generator(std::random_device{}());
 
@@ -92,11 +115,12 @@ int main(int argc, char* argv[]){
 				break;
 
 			case 'l':
-				PktLen = optarg;
+				//PktLen = optarg; To be done: packet length using distribution models
+				PktFile = optarg;
 				break;
 
 			case 'p':
-				PktFile = optarg;
+				PktArrival = optarg;
 				break;
 
 			case 't':
@@ -120,13 +144,22 @@ int main(int argc, char* argv[]){
 			exit(-1);
 		}
 
+	/******************************Get Hosts***************************/
+	int sockfd;
+	struct ifreq Interface;
+	vector<Host_IP> Servers, Clients;
+	vector<Host_IP>::iterator host_it;
+	Host_IP tmphost;
+	char buf[30];
+	Traffic::ETHER_h ether;
+
+	/*Get Server Host(s)*/
 	sockfd = socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW);
 	if(sockfd < 0){
 		perror("socket");
 		exit(-1);
 	}
 
-	/*Get Server Host(s)*/
 	if(ServerHostFile == NULL){
 		if(IfName != NULL){
 			memset(&Interface, 0, sizeof(Interface));
@@ -144,9 +177,13 @@ int main(int argc, char* argv[]){
 				perror("Interface, SIOCGIFHWADDR");
 				exit(-1);
 			}
-			//unsigned char mac_address[6];
-			//memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
-			//printf("%02x:%02x:%02x:%02x:%02x:%02x\n",mac_address[0],mac_address[1],mac_address[2],mac_address[3],mac_address[4],mac_address[5]);
+			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
+			memcpy(ether.ether_dhost, DstMac, 6);
+			/*
+			 * unsigned char mac_address[6];
+			 * memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
+			 * printf("%02x:%02x:%02x:%02x:%02x:%02x\n",mac_address[0],mac_address[1],mac_address[2],mac_address[3],mac_address[4],mac_address[5]);
+			 */
 		}
 		else{
 			std::cout << "Must specify either Interface or Server hosts\n";
@@ -163,10 +200,10 @@ int main(int argc, char* argv[]){
 		}
 	}
 	/*
-		for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
-			std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
-		cout<<endl<<endl;
-	*/
+	 * for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
+	 * 		std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+	 * cout<<endl<<endl;
+	 */
 
 	/*Get Client Hosts*/
 	if(ClientHostFile == NULL){
@@ -192,11 +229,14 @@ int main(int argc, char* argv[]){
 		}
 	}
 	/*
-		for(std::vector<Host_IP>::const_iterator i=Clients.begin(); i!=Clients.end(); i++)
-			std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
-	*/
+	 * for(std::vector<Host_IP>::const_iterator i=Clients.begin(); i!=Clients.end(); i++)
+	 * 		std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
+	 */
 
-	/*Get Packet length and protocol distribution*/
+	/************************Get Packet length and protocol distribution***********************/
+	vector<vector<double>> PktDist;
+	fstream PktDistF;
+
 	PktDistF.open(PktFile, std::fstream::in);
 	std::string line;
 	while(std::getline(PktDistF, line)){
@@ -210,18 +250,67 @@ int main(int argc, char* argv[]){
 		PktDist.push_back(W);
 	}
 	/*
-	    std::cout.precision(14);
-		for(int i=0; i<PktDist.size();i++){
-			for(int j=0; j<PktDist[i].size();j++)
-				std::cout<<PktDist[i][j]<<" ";
-			std::cout<<std::endl;
-		}
-
+	 * std::cout.precision(14);
+	 * for(int i=0; i<PktDist.size();i++){
+	 * 	for(int j=0; j<PktDist[i].size();j++)
+	 * 		std::cout<<PktDist[i][j]<<" ";
+	 * 	std::cout<<std::endl;
+	 * }
 	 */
 
-	/*TEST*/
-	Traffic::ETHER_h E;
-	Traffic::Flow A(0, E);
+
+	/************************	  	Resolve Distribution Models		************************/
+	Threadpool::Prob::Distribution FlowArr_D, PktArr_D, FlowLen_D;
+	Threadpool::Prob::Model FlowArr_M, PktArr_M, FlowLen_M;
+	int FlowArr_a, FlowArr_b, PktArr_a, PktArr_b, FlowLen_a, FlowLen_b;
+	/*
+	 *  To be done: packet length using distribution models
+	 *
+	 *  Threadpool::Prob::Model PktLen_M;
+	 *  int PktLen_a, PktLen_b;
+	 */
+
+	if(ResolveModel(FlowArrival, FlowArr_M, FlowArr_a, FlowArr_b) != 0){
+		std::cout << "Wrong Distribution Model Name : FlowArrival\n";
+		exit(-1);
+	}
+	if(ResolveModel(PktArrival, PktArr_M, PktArr_a, PktArr_b) != 0){
+			std::cout << "Wrong Distribution Model Name : PktArrival\n";
+			exit(-1);
+	}
+	if(ResolveModel(FlowLen, FlowLen_M, FlowLen_a, FlowLen_b) != 0){
+			std::cout << "Wrong Distribution Model Name : FlowLen\n";
+			exit(-1);
+	}
+
+	Threadpool::getmodel(FlowArr_D, FlowArr_M, FlowArr_a, FlowArr_b);
+	Threadpool::getmodel(PktArr_D, PktArr_M, PktArr_a, PktArr_b);
+	Threadpool::getmodel(FlowLen_D, FlowLen_M, FlowLen_a, FlowLen_b);
+
+	/************************	  	Main Job		************************/
+	std::uniform_int_distribution<int> ServerIdx(0,Servers.size()-1);
+	std::uniform_int_distribution<int> ClientIdx(0,Clients.size()-1);
+	struct epoll_event *events = new struct epoll_event[ActiveFlows];
+	struct itimerspec timer;
+	int epollfd;
+	int pktlen;
+	Traffic::Protocol ptype;
+	bool is_ipv4;
+
+
+	epollfd = epoll_create(1);
+
+	for(int i; i<ActiveFlows; i++){
+		struct epoll_event ev;
+		int timefd = timerfd_create(CLOCK_REALTIME, 0);
+		int sidx, cidx;
+		Traffic::Flow *flow = new Traffic::Flow(timefd, ether);
+		sidx = ServerIdx(flow->generator);
+		cidx = ClientIdx(flow->generator);
+		flow->setFlow(Servers[sidx], Clients[cidx],  FlowLen_D(flow->generator), PktDist);
+		ev.data.ptr = (void*)flow;
+
+	}
 
 	return 0;
 

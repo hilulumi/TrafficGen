@@ -40,7 +40,7 @@ const size_t UDPLEN = sizeof(UDP_h);
 const size_t ICMPLEN = sizeof(ICMP_h);
 const size_t ICMP6LEN = sizeof(ICMP6_h);
 
-enum class Protocol {TCP, UDP, ICMP};
+enum class Protocol {TCP, UDP, ICMP, UNKNOWN};
 
 
 uint16_t checksum (uint16_t *addr, int len)
@@ -161,7 +161,9 @@ public:
 	virtual bool isIP4(){
 		return true;
 	}
-	virtual void reset_next_protocol(u_int8_t)	{}
+	virtual void reset_next_protocol(u_int16_t protocol){
+		ether->ether_type = protocol;
+	}
 	virtual void reset_pkt(int a, int b, int c, unsigned long d)	{}
 	size_t getLen()	{
 		return pkt_len;
@@ -179,6 +181,7 @@ public:
 		Raw_Packet(header, len)
 	{
 		ip = (IPV4_h*)cur;
+		Raw_Packet::reset_next_protocol(ETHERTYPE_IP);
 		ip->saddr = src.getaddr();
 		ip->daddr = dst.getaddr();
 		ip->ihl = IPV4LEN / sizeof(uint32_t);
@@ -199,8 +202,8 @@ public:
 	bool isIP4(){
 		return true;
 	}
-	void reset_next_protocol(u_int8_t protocol){
-		ip->protocol = protocol;
+	void reset_next_protocol(u_int16_t protocol){
+		ip->protocol = (uint8_t)protocol;
 	}
 	virtual void reset_pkt(int start_id, int sent_pkt, int flow_length=0, unsigned long sent_byte=0){
 		//std::cout << ip->saddr <<std::endl;
@@ -219,6 +222,7 @@ public:
 		Raw_Packet(header, len)
 	{
 		ip = (IPV6_h*)cur;
+		Raw_Packet::reset_next_protocol(ETHERTYPE_IPV6);
 		ip->ip6_flow = htonl ((6 << 28) | (0 << 20) | 0);
 		//p->ip6_nxt = IPPROTO_TCP; decide at next layer
 		ip->ip6_hops = 255;
@@ -246,8 +250,8 @@ public:
 	bool isIP4(){
 		return false;
 	}
-	void reset_next_protocol(u_int8_t protocol){
-		ip->ip6_nxt = protocol;
+	void reset_next_protocol(u_int16_t protocol){
+		ip->ip6_nxt = (u_int8_t)protocol;
 	}
 	virtual void reset_pkt(int start_id, int sent_pkt, int flow_length=0, unsigned long sent_byte=0){
 		uint16_t id = (uint16_t)start_id + (uint16_t)sent_pkt;
