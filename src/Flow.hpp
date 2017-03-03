@@ -14,7 +14,6 @@
 #include <algorithm>
 
 
-
 namespace Traffic{
 
 
@@ -25,7 +24,6 @@ private:
 	int sent_pkt;	//pkt already sent
 	int start_id;
 	unsigned long sent_byte;
-	struct timespec arrival_time; //flow arrival time
 	ETHER_h ether;
 	Host_IP src, dst;
 	bool ipv4;
@@ -34,14 +32,13 @@ private:
 
 public:
 	std::default_random_engine generator;
-
+	struct itimerspec arrival_time; //flow arrival time
 	Flow(int timer_v, ETHER_h& ether_v){
 		std::uniform_int_distribution<int> D(1,16384);
 		generator.seed(std::random_device{}());
 		start_id = D(generator);
 		timer = timer_v;
-		clock_gettime(CLOCK_REALTIME, &(arrival_time));
-		std::memcpy(&ether, &ether_v, ETHERLEN);
+		ether = ether_v;
 		ipv4 = true;
 		type = Protocol::UNKNOWN;
 		flow_length = 0;
@@ -55,10 +52,18 @@ public:
 		delete pkt;
 		pkt = NULL;
 	}
-	/*Call From Dispather*/
-	void setFlowTime(struct timespec& time){
-		arrival_time.tv_nsec = time.tv_nsec;
-		arrival_time.tv_sec = time.tv_sec;
+	Raw_Packet* takePkt(){
+		Raw_Packet *x = pkt;
+		pkt = NULL;
+		sent_pkt++;
+		sent_byte += x->getLen();
+		return x;
+	}
+	int getTimerfd(){
+		return timer;
+	}
+	int getRemain(){
+		return flow_length - sent_pkt;
 	}
 
 	/*
@@ -105,6 +110,8 @@ public:
 				if(ipv4) pkt = new IPV4_t(src, dst, ether, pktlen);
 				else pkt = new IPV6_t(src, dst, ether, pktlen);
 		}
+		pkt->reset_pkt(start_id, sent_pkt, flow_length, sent_byte);
+
 	}
 	/*
 	 * Get a length for the new packet

@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -19,11 +18,10 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/timerfd.h>
-#include <time.h>
 #include <unistd.h>
 #include "Flow.hpp"
 #include "Threadpool.hpp"
-
+#include "Helper.hpp"
 
 
 #define LONGOPT "s:F:c:f:L:l:p:t:i:"
@@ -146,6 +144,7 @@ int main(int argc, char* argv[]){
 
 	/******************************Get Hosts***************************/
 	int sockfd;
+	struct sockaddr_ll socket_address;
 	struct ifreq Interface;
 	vector<Host_IP> Servers, Clients;
 	vector<Host_IP>::iterator host_it;
@@ -170,6 +169,16 @@ int main(int argc, char* argv[]){
 			}
 			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
 			Servers.push_back(tmphost);
+			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
+			memcpy(ether.ether_dhost, DstMac, 6);
+			socket_address.sll_ifindex = Interface.ifr_ifindex;
+			socket_address.sll_halen = ETH_ALEN;
+			socket_address.sll_addr[0] = DstMac[0];
+			socket_address.sll_addr[1] = DstMac[1];
+			socket_address.sll_addr[2] = DstMac[2];
+			socket_address.sll_addr[3] = DstMac[3];
+			socket_address.sll_addr[4] = DstMac[4];
+			socket_address.sll_addr[5] = DstMac[5];
 			/*Get Host MAC address*/
 			memset(&Interface, 0, sizeof(Interface));
 			strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
@@ -177,8 +186,7 @@ int main(int argc, char* argv[]){
 				perror("Interface, SIOCGIFHWADDR");
 				exit(-1);
 			}
-			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
-			memcpy(ether.ether_dhost, DstMac, 6);
+
 			/*
 			 * unsigned char mac_address[6];
 			 * memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
@@ -283,37 +291,119 @@ int main(int argc, char* argv[]){
 			exit(-1);
 	}
 
-	Threadpool::getmodel(FlowArr_D, FlowArr_M, FlowArr_a, FlowArr_b);
-	Threadpool::getmodel(PktArr_D, PktArr_M, PktArr_a, PktArr_b);
-	Threadpool::getmodel(FlowLen_D, FlowLen_M, FlowLen_a, FlowLen_b);
+	Threadpool::Prob::getmodel(FlowArr_D, FlowArr_M, FlowArr_a, FlowArr_b);
+	Threadpool::Prob::getmodel(PktArr_D, PktArr_M, PktArr_a, PktArr_b);
+	Threadpool::Prob::getmodel(FlowLen_D, FlowLen_M, FlowLen_a, FlowLen_b);
 
 	/************************	  	Main Job		************************/
+
 	std::uniform_int_distribution<int> ServerIdx(0,Servers.size()-1);
 	std::uniform_int_distribution<int> ClientIdx(0,Clients.size()-1);
-	struct epoll_event *events = new struct epoll_event[ActiveFlows];
+	struct epoll_event *events = new struct epoll_event[ActiveFlows+1];
+	struct epoll_event tmpev;
 	struct itimerspec timer;
-	int epollfd;
-	int pktlen;
-	Traffic::Protocol ptype;
-	bool is_ipv4;
+	int epollfd, monitor, nfds;
+	bool finflag = false;
 
 
+	clock_gettime(CLOCK_REALTIME, &(timer.it_value));
+	timer.it_value.tv_sec = timer.it_value.tv_sec+ 5;
+	timer.it_interval.tv_sec = duration;
+	timer.it_interval.tv_nsec = 0;
 	epollfd = epoll_create(1);
+	monitor = timerfd_create(CLOCK_REALTIME, 0);
+	tmpev.data.ptr = (void*)new Traffic::Flow(monitor, ether);
+	tmpev.events = EPOLLIN|EPOLLET;
+	if(epoll_ctl(epollfd, EPOLL_CTL_ADD, monitor, &tmpev) == -1) {
+		perror("epoll_ctl: fd");
+		exit(-1);
+	}
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_nsec = 1000;
+
+	Threadpool::Pool pool(FlowArr_D, FlowLen_D);
 
 	for(int i; i<ActiveFlows; i++){
-		struct epoll_event ev;
+		struct epoll_event *ev = new struct epoll_event[1];
 		int timefd = timerfd_create(CLOCK_REALTIME, 0);
 		int sidx, cidx;
 		Traffic::Flow *flow = new Traffic::Flow(timefd, ether);
 		sidx = ServerIdx(flow->generator);
 		cidx = ClientIdx(flow->generator);
 		flow->setFlow(Servers[sidx], Clients[cidx],  FlowLen_D(flow->generator), PktDist);
-		ev.data.ptr = (void*)flow;
-
+		timer.it_value.tv_nsec += FlowArr_D(flow->generator)*1000000;
+		timer.it_value.tv_sec += timer.it_value.tv_nsec/1000000000;
+		timer.it_value.tv_nsec = timer.it_value.tv_nsec%1000000000;
+		flow->arrival_time = timer;
+		ev->data.ptr = (void*)flow;
+		ev->events = EPOLLIN|EPOLLET;
+		if(epoll_ctl(epollfd, EPOLL_CTL_ADD, flow->getTimerfd(), ev) == -1) {
+		    perror("epoll_ctl: fd");
+		    exit(-1);
+		}
+		timerfd_settime(flow->getTimerfd(), TFD_TIMER_ABSTIME, &flow->arrival_time, NULL);
 	}
 
-	return 0;
+	while(!finflag){
+		nfds = epoll_wait(epollfd, events, ActiveFlows+1, -1);
+		if (nfds == -1) {
+			perror("epoll_wait");
+			exit(-1);
+		}
+		for(int j=0; j<nfds;j++){
+			Traffic::Flow* flow_ev = (Traffic::Flow*)(events[j].data.ptr);
+			Traffic::Raw_Packet *pkt = flow_ev->takePkt();
+			if(flow_ev->getTimerfd()==monitor){
+				finflag = true;
+				break;
+			}
+			/*Generate Send Pkt job*/
+			if(pkt != NULL){
+				auto job = new Threadpool::Job::callback([pkt, &socket_address](Threadpool::Worker& w)
+						{
+							if (sendto(w.getSocket(), pkt->getframe(), pkt->getLen()+Traffic::ETHERLEN, 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0)
+						    cout<<"Send failed\n";
+							return Threadpool::Job::Type::NORMAL;
+						});
+				pool.push(job);
+			}
+			/*Set a new flow*/
+			if(flow_ev->getRemain() != 0){
+				auto job = new Threadpool::Job::callback([flow_ev, &PktDist](Threadpool::Worker& w)
+						{
+							int len = flow_ev->getPktLen(PktDist);
+							flow_ev->genPkt(len);
+							flow_ev->arrival_time.it_value.tv_nsec += w.InterPktDist(flow_ev->generator)*1000000;
+							flow_ev->arrival_time.it_value.tv_sec += flow_ev->arrival_time.it_value.tv_nsec/1000000000;
+							flow_ev->arrival_time.it_value.tv_nsec = flow_ev->arrival_time.it_value.tv_nsec%1000000000;
+							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
+							return Threadpool::Job::Type::NORMAL;
+						});
+				pool.push(job);
+			}
+			else{
+				timer.it_value.tv_nsec += FlowArr_D(flow_ev->generator)*1000000;
+				timer.it_value.tv_sec += timer.it_value.tv_nsec/1000000000;
+				timer.it_value.tv_nsec = timer.it_value.tv_nsec%1000000000;
+				flow_ev->arrival_time = timer;
+				auto job = new Threadpool::Job::callback([flow_ev, epollfd, &Servers, &Clients, &PktDist](Threadpool::Worker& w)
+						{
+							std::uniform_int_distribution<int> SIdx(0,Servers.size()-1);
+							std::uniform_int_distribution<int> CIdx(0,Clients.size()-1);
+							struct itimerspec arrtime;
+							flow_ev->setFlow(Servers[SIdx(flow_ev->generator)], Clients[CIdx(flow_ev->generator)],  w.FlowLenDist(flow_ev->generator), PktDist);
+							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
+							return Threadpool::Job::Type::NORMAL;
+						});
+				pool.push(job);
+			}
+		}//events forloop
+	}//epoll wait while loop
 
+	pool.terminate();
+
+
+	return 0;
 }
 
 

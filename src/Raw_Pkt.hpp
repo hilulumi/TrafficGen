@@ -150,7 +150,7 @@ public:
 		pkt_len = len;
 		frame = new uint8_t[len+ETHERLEN];
 		ether = (ETHER_h*)frame;
-		std::memcpy(ether, &header, ETHERLEN);
+		*ether = header;
 		cur = (uint8_t*)ether + ETHERLEN;
 	}
 	virtual ~Raw_Packet(){
