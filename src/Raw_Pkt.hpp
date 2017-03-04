@@ -7,6 +7,7 @@
 
 #ifndef SRC_RAW_PKT_HPP_
 #define SRC_RAW_PKT_HPP_
+#define __FAVOR_BSD
 
 #include "Host_IP.hpp"
 #include <cstdint>
@@ -329,9 +330,9 @@ public:
 	{
 		udp = (UDP_h*)T::cur;
 		T::reset_next_protocol(IPPROTO_UDP);
-		udp->source = htons(src.getport());
-		udp->dest = htons(dst.getport());
-		udp->check = 0;
+		udp->uh_sport = htons(src.getport());
+		udp->uh_dport = htons(dst.getport());
+		udp->uh_sum = 0;
 		/*if(T::isIP4()){
 			udp->len = len - IPV4LEN;
 			udp->check = tcpudp4_checksum(T::ip, (uint16_t*)udp, udp->len, IPPROTO_UDP);
@@ -348,12 +349,12 @@ public:
 	virtual void reset_pkt(int start_id, int sent_pkt, int flow_length, unsigned long sent_byte){
 		T::reset_pkt(start_id, sent_pkt);
 		if(T::isIP4()){
-			udp->len = htons(T::pkt_len - IPV4LEN);
-			udp->check = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV4LEN, IPPROTO_UDP);
+			udp->uh_ulen = htons(T::pkt_len - IPV4LEN);
+			udp->uh_sum = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV4LEN, IPPROTO_UDP);
 		}
 		else{
-			udp->len = htons(T::pkt_len - IPV6LEN);
-			udp->check = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV6LEN, IPPROTO_UDP);
+			udp->uh_ulen = htons(T::pkt_len - IPV6LEN);
+			udp->uh_sum = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV6LEN, IPPROTO_UDP);
 		}
 	}
 };
