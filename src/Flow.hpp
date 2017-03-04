@@ -57,8 +57,6 @@ public:
 		if(x == NULL)
 			return x;
 		pkt = NULL;
-		sent_pkt++;
-		sent_byte += x->getLen();
 		return x;
 	}
 	int getTimerfd(){
@@ -95,27 +93,35 @@ public:
 			delete pkt;
 			pkt = NULL;
 		}
+		size_t l3, l4;
 		switch(type){
 			case Protocol::TCP:
 				if(ipv4) pkt = new TCP_t<IPV4_t>(src, dst, ether, pktlen);
 				else pkt = new TCP_t<IPV6_t>(src, dst, ether, pktlen);
+				l4 = TCPLEN;
 				break;
 
 			case Protocol::UDP:
 				if(ipv4) pkt = new UDP_t<IPV4_t>(src, dst, ether, pktlen);
 				else pkt = new UDP_t<IPV6_t>(src, dst, ether, pktlen);
+				l4 = UDPLEN;
 				break;
 
 			case Protocol::ICMP:
 				if(ipv4) pkt = new ICMP_t(src, dst, ether, pktlen);
 				else pkt = new ICMP6_t(src, dst, ether, pktlen);
+				l4 = ICMPLEN;
 				break;
 
 			default:
 				if(ipv4) pkt = new IPV4_t(src, dst, ether, pktlen);
 				else pkt = new IPV6_t(src, dst, ether, pktlen);
+				l4 = 0;
 		}
+		l3 = ipv4 ? IPV4LEN : IPV6LEN;
 		pkt->reset_pkt(start_id, sent_pkt, flow_length, sent_byte);
+		sent_pkt++;
+		sent_byte += (pktlen - l3 - l4);
 
 	}
 	/*
