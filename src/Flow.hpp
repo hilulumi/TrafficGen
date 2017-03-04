@@ -149,8 +149,8 @@ public:
 				case 0:{t = Protocol::TCP; v4 = true;}break;
 				case 1:{t = Protocol::UDP; v4 = true;}break;
 				case 2:{t = Protocol::ICMP; v4 = true;}break;
-				case 3:{t = Protocol::ICMP; v4 = false;}break;
-				case 4:{t = Protocol::ICMP; v4 = false;}break;
+				case 3:{t = Protocol::TCP; v4 = false;}break;
+				case 4:{t = Protocol::UDP; v4 = false;}break;
 				case 5:{t = Protocol::ICMP; v4 = false;}break;
 				default:{t = Protocol::UNKNOWN;}
 			}
