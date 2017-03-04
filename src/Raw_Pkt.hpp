@@ -163,7 +163,7 @@ public:
 		return true;
 	}
 	virtual void reset_next_protocol(u_int16_t protocol){
-		ether->ether_type = protocol;
+		ether->ether_type = htons(protocol);
 	}
 	virtual void reset_pkt(int a, int b, int c, unsigned long d)	{}
 	size_t getLen()	{

@@ -166,9 +166,11 @@ int main(int argc, char* argv[]){
 		perror("socket");
 		exit(-1);
 	}
-
+	if(IfName == NULL){
+		std::cout << "Must specify either Interface or Server hosts\n";
+		exit(-1);
+	}
 	if(ServerHostFile == NULL){
-		if(IfName != NULL){
 			memset(&Interface, 0, sizeof(Interface));
 			strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
 			if(ioctl(sockfd, SIOCGIFADDR, &Interface) < 0){
@@ -177,28 +179,6 @@ int main(int argc, char* argv[]){
 			}
 			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
 			Servers.push_back(tmphost);
-
-			/*Get Host MAC address*/
-			memset(&Interface, 0, sizeof(Interface));
-			strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
-			if(ioctl(sockfd, SIOCGIFHWADDR, &Interface)< 0){
-				perror("Interface, SIOCGIFHWADDR");
-				exit(-1);
-			}
-			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
-			memcpy(ether.ether_dhost, DstMac, 6);
-
-			/*
-			 * unsigned char mac_address[6];
-			 * memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
-			 * printf("%02x:%02x:%02x:%02x:%02x:%02x\n",mac_address[0],mac_address[1],mac_address[2],mac_address[3],mac_address[4],mac_address[5]);
-			 */
-		}
-		else{
-			std::cout << "Must specify either Interface or Server hosts\n";
-			exit(-1);
-		}
-
 	}
 	else{
 		std::fstream file(ServerHostFile, std::fstream::in);
@@ -208,6 +188,21 @@ int main(int argc, char* argv[]){
 				Servers.push_back(tmphost);
 		}
 	}
+	/*Get Device and Host MAC address*/
+	memset(&Interface, 0, sizeof(Interface));
+	strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
+	if(ioctl(sockfd, SIOCGIFHWADDR, &Interface)< 0){
+		perror("Interface, SIOCGIFHWADDR");
+		exit(-1);
+	}
+	memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
+	memcpy(ether.ether_dhost, DstMac, 6);
+
+	/*
+	 * unsigned char mac_address[6];
+	 * memcpy(mac_address, Interface.ifr_hwaddr.sa_data, 6);
+	 * printf("%02x:%02x:%02x:%02x:%02x:%02x\n",mac_address[0],mac_address[1],mac_address[2],mac_address[3],mac_address[4],mac_address[5]);
+	 */
 	memset(&Interface, 0, sizeof(struct ifreq));
 	strncpy(Interface.ifr_name, IfName, 10);
 	if (ioctl(sockfd, SIOCGIFINDEX, &Interface) < 0){
