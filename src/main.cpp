@@ -389,7 +389,7 @@ int main(int argc, char* argv[]){
 						});
 				pool.push(job);
 			}
-			/*Set a new flow*/
+			/*Generate a New Pkt Job*/
 			if(flow_ev->getRemain() != 0){
 				auto job = new Threadpool::Job::callback([flow_ev, &PktDist](Threadpool::Worker& w)
 						{
@@ -404,6 +404,7 @@ int main(int argc, char* argv[]){
 						});
 				pool.push(job);
 			}
+			/*Generate a New Flow Job*/
 			else{
 				timer.it_value.tv_nsec += FlowArr_D(flow_ev->generator)*1000000;
 				timer.it_value.tv_sec += timer.it_value.tv_nsec/1000000000;
