@@ -337,7 +337,7 @@ int main(int argc, char* argv[]){
 
 	Threadpool::Pool pool(FlowArr_D, FlowLen_D);
 
-	for(int i; i<ActiveFlows; i++){
+	for(int i=0; i<ActiveFlows; i++){
 		struct epoll_event *ev = new struct epoll_event[1];
 		int timefd = timerfd_create(CLOCK_REALTIME, 0);
 		int sidx, cidx;
