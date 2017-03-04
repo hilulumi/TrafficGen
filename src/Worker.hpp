@@ -17,7 +17,7 @@ namespace Threadpool{
 namespace Prob{
 enum class Model {Weibull, Lognormal, Poisson};
 typedef std::function<int(std::default_random_engine&)> Distribution;
-void getmodel(Prob::Distribution&, Prob::Model, int, int);
+void getmodel(Prob::Distribution&, Prob::Model, double, double);
 }
 
 class Pool;
@@ -26,7 +26,7 @@ class Worker{
 
 private:
 	int sockfd;
-	std::thread wthread;
+	std::thread* wthread;
 
 public:
 	Prob::Distribution InterPktDist;

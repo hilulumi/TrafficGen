@@ -12,7 +12,7 @@
 
 namespace Threadpool{
 
-void Prob::getmodel(Prob::Distribution& Dist, Prob::Model i, int a, int b)
+void Prob::getmodel(Prob::Distribution& Dist, Prob::Model i, double a, double b)
 {
 	using namespace Prob;
     switch(i){
@@ -39,7 +39,7 @@ void Prob::getmodel(Prob::Distribution& Dist, Prob::Model i, int a, int b)
 }
 
 Worker::Worker(Pool& pool, const Prob::Distribution& InterPkt, const Prob::Distribution& FlowLen):
-		wthread(std::bind(&Worker::execute, this, std::ref(pool))){
+		wthread(new std::thread(&Worker::execute, this, std::ref(pool))){
 	if ((sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) == -1) {
 		perror("socket");
 	}
@@ -55,13 +55,17 @@ void Worker::execute(Pool& pool){
 		Job::callback* job;
 		Job::Type jtype = Job::Type::NORMAL;
 		while(jtype != Job::Type::FINCALL && pool.JobQ->pop(job)){
-			jtype = (*job)(*this);
+			--pool.Qsize;
+			//suicide when done
+			const std::unique_ptr<Job::callback> work(job);
+			jtype = (*work)(*this);
 		}
 
 		if(jtype == Job::Type::FINCALL)
 			return;
 		std::unique_lock<std::mutex> lock(pool.job_mutex);
 		pool.job_signal.wait(lock, [&pool](){return pool.WorkerQ.size()>0;});
+
 	}
 }
 

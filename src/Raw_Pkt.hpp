@@ -157,6 +157,7 @@ public:
 		ether = NULL;
 		cur = NULL;
 		delete [] frame;
+		frame = NULL;
 	}
 	virtual bool isIP4(){
 		return true;

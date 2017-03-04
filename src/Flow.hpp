@@ -54,6 +54,8 @@ public:
 	}
 	Raw_Packet* takePkt(){
 		Raw_Packet *x = pkt;
+		if(x == NULL)
+			return x;
 		pkt = NULL;
 		sent_pkt++;
 		sent_byte += x->getLen();
@@ -88,8 +90,11 @@ public:
 	 * Assign a new packet to the flow
 	 */
 	void genPkt(size_t pktlen){
-		delete pkt;
-		pkt = NULL;
+		if(pkt != NULL){
+			std::cout<<"Pkt Non deleted\n";
+			delete pkt;
+			pkt = NULL;
+		}
 		switch(type){
 			case Protocol::TCP:
 				if(ipv4) pkt = new TCP_t<IPV4_t>(src, dst, ether, pktlen);

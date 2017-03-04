@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 #include <boost/lockfree/queue.hpp>
 #include "Worker.hpp"
@@ -28,16 +29,16 @@ private:
 	std::unique_ptr<boost::lockfree::queue<Job::callback*>> JobQ;
 	std::mutex job_mutex;
 	std::condition_variable job_signal;
-	std::vector<Worker> WorkerQ;
-
+	std::vector<Worker*> WorkerQ;
+	std::atomic<size_t> Qsize;
 public:
 	Pool( Prob::Distribution& InterPkt, Prob::Distribution& FlowLen,
 			std::size_t worker_count = std::thread::hardware_concurrency()):
-				JobQ(new boost::lockfree::queue<Job::callback*>(0))
+				JobQ(new boost::lockfree::queue<Job::callback*>(0)), Qsize(0)
 	{
 
 		for(size_t i=0; i<worker_count; i++){
-			WorkerQ.push_back(Worker(*this, InterPkt, FlowLen));
+			WorkerQ.push_back(new Worker(*this, InterPkt, FlowLen));
 		}
 
 	}
@@ -45,18 +46,24 @@ public:
 		terminate();
 	}
 	void push(Job::callback* job){
+		//std::unique_lock<std::mutex> lock(job_mutex);
+		++Qsize;
 		JobQ->push(job);
 		job_signal.notify_one();
+	}
+	size_t JobNum(){
+		return Qsize.load();
 	}
 	void terminate(){
 		for(size_t i=0; i<WorkerQ.size(); i++){
 			push(new Job::callback([](Worker& X){return Job::Type::FINCALL;}));
 		}
 
-		for(size_t i=0; i<WorkerQ.size(); i++){
-			WorkerQ[i].wthread.join();
+		while(!WorkerQ.empty()){
+			WorkerQ.back()->wthread->join();
+			delete WorkerQ.back()->wthread;
+			WorkerQ.pop_back();
 		}
-		WorkerQ.clear();
 		JobQ.~unique_ptr();
 	}
 

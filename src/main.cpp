@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
@@ -31,7 +32,7 @@ u_int8_t DstMac[6] = {0x34, 0x97, 0xF6, 0x33, 0x5E, 0xE9};
 
 using namespace std;
 
-int ResolveModel(string S, Threadpool::Prob::Model &t, int &a, int &b){
+int ResolveModel(string S, Threadpool::Prob::Model &t, double &a, double &b){
     char *x = new char[S.size()];
     strncpy(x, S.c_str(), S.size());
     char* pch;
@@ -41,8 +42,8 @@ int ResolveModel(string S, Threadpool::Prob::Model &t, int &a, int &b){
     pintb = strtok (NULL," )");
     pch = strtok (pch," ");
     string tmp(pch);
-    a = atoi(pinta);
-    b = atoi(pintb);
+    a = atof(pinta);
+    b = atof(pintb);
     if(tmp == "weibull")
     	t = Threadpool::Prob::Model::Weibull;
     else if(tmp == "lognormal")
@@ -58,7 +59,7 @@ int ResolveModel(string S, Threadpool::Prob::Model &t, int &a, int &b){
 
 int main(int argc, char* argv[]){
 	int c;
-	int ServerNum = 1, ActiveFlows = 1, duration = 10;
+	int ActiveFlows = 1, duration = 10;
 	char *ServerHostFile = NULL, *ClientHostFile = NULL, *IfName = NULL, *PktFile=NULL;
 	std::string FlowArrival(DEFAULT_DISTR);
 	std::string PktArrival(DEFAULT_DISTR);
@@ -140,9 +141,16 @@ int main(int argc, char* argv[]){
 	if(PktFile == NULL){
 			std::cout << "Must specify a Packet Distribution File\n";
 			exit(-1);
-		}
+	}
 
-	/******************************Get Hosts***************************/
+	/**************************Set Max File Discriptor***************************/
+	struct rlimit rlim;
+	getrlimit(RLIMIT_NOFILE, &rlim);
+	rlim.rlim_cur = (ActiveFlows+100<rlim.rlim_max)?ActiveFlows+100:rlim.rlim_max;
+	setrlimit(RLIMIT_NOFILE, &rlim);
+	//getrlimit(RLIMIT_NOFILE, &rlim);
+
+	/*****************************	Get Hosts	*********************************/
 	int sockfd;
 	struct sockaddr_ll socket_address;
 	struct ifreq Interface;
@@ -169,16 +177,7 @@ int main(int argc, char* argv[]){
 			}
 			tmphost.setaddr(((struct sockaddr_in*)&Interface.ifr_addr)->sin_addr.s_addr);
 			Servers.push_back(tmphost);
-			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
-			memcpy(ether.ether_dhost, DstMac, 6);
-			socket_address.sll_ifindex = Interface.ifr_ifindex;
-			socket_address.sll_halen = ETH_ALEN;
-			socket_address.sll_addr[0] = DstMac[0];
-			socket_address.sll_addr[1] = DstMac[1];
-			socket_address.sll_addr[2] = DstMac[2];
-			socket_address.sll_addr[3] = DstMac[3];
-			socket_address.sll_addr[4] = DstMac[4];
-			socket_address.sll_addr[5] = DstMac[5];
+
 			/*Get Host MAC address*/
 			memset(&Interface, 0, sizeof(Interface));
 			strncpy(Interface.ifr_name, IfName, IFNAMSIZ-1);
@@ -186,6 +185,8 @@ int main(int argc, char* argv[]){
 				perror("Interface, SIOCGIFHWADDR");
 				exit(-1);
 			}
+			memcpy(ether.ether_shost, Interface.ifr_hwaddr.sa_data, 6);
+			memcpy(ether.ether_dhost, DstMac, 6);
 
 			/*
 			 * unsigned char mac_address[6];
@@ -207,6 +208,22 @@ int main(int argc, char* argv[]){
 				Servers.push_back(tmphost);
 		}
 	}
+	memset(&Interface, 0, sizeof(struct ifreq));
+	strncpy(Interface.ifr_name, IfName, 10);
+	if (ioctl(sockfd, SIOCGIFINDEX, &Interface) < 0){
+		perror("SIOCGIFINDEX");
+		exit(-1);
+	}
+
+	socket_address.sll_ifindex = Interface.ifr_ifindex;
+	socket_address.sll_halen = ETH_ALEN;
+	socket_address.sll_addr[0] = DstMac[0];
+	socket_address.sll_addr[1] = DstMac[1];
+	socket_address.sll_addr[2] = DstMac[2];
+	socket_address.sll_addr[3] = DstMac[3];
+	socket_address.sll_addr[4] = DstMac[4];
+	socket_address.sll_addr[5] = DstMac[5];
+
 	/*
 	 * for(std::vector<Host_IP>::const_iterator i=Servers.begin(); i!=Servers.end(); i++)
 	 * 		std::cout<< ntohl(i->getaddr()) << ':' << ntohs(i->getport())<<endl;
@@ -270,7 +287,7 @@ int main(int argc, char* argv[]){
 	/************************	  	Resolve Distribution Models		************************/
 	Threadpool::Prob::Distribution FlowArr_D, PktArr_D, FlowLen_D;
 	Threadpool::Prob::Model FlowArr_M, PktArr_M, FlowLen_M;
-	int FlowArr_a, FlowArr_b, PktArr_a, PktArr_b, FlowLen_a, FlowLen_b;
+	double FlowArr_a, FlowArr_b, PktArr_a, PktArr_b, FlowLen_a, FlowLen_b;
 	/*
 	 *  To be done: packet length using distribution models
 	 *
@@ -301,7 +318,7 @@ int main(int argc, char* argv[]){
 	std::uniform_int_distribution<int> ClientIdx(0,Clients.size()-1);
 	struct epoll_event *events = new struct epoll_event[ActiveFlows+1];
 	struct epoll_event tmpev;
-	struct itimerspec timer;
+	struct itimerspec timer, monitorT;
 	int epollfd, monitor, nfds;
 	bool finflag = false;
 
@@ -311,6 +328,9 @@ int main(int argc, char* argv[]){
 	timer.it_interval.tv_sec = duration;
 	timer.it_interval.tv_nsec = 0;
 	epollfd = epoll_create(1);
+
+	monitorT = timer;
+	monitorT.it_value.tv_sec = monitorT.it_value.tv_sec + duration;
 	monitor = timerfd_create(CLOCK_REALTIME, 0);
 	tmpev.data.ptr = (void*)new Traffic::Flow(monitor, ether);
 	tmpev.events = EPOLLIN|EPOLLET;
@@ -318,8 +338,7 @@ int main(int argc, char* argv[]){
 		perror("epoll_ctl: fd");
 		exit(-1);
 	}
-	timer.it_interval.tv_sec = 0;
-	timer.it_interval.tv_nsec = 1000;
+	timerfd_settime(monitor, TFD_TIMER_ABSTIME, &monitorT, NULL);
 
 	Threadpool::Pool pool(FlowArr_D, FlowLen_D);
 
@@ -342,6 +361,8 @@ int main(int argc, char* argv[]){
 		    exit(-1);
 		}
 		timerfd_settime(flow->getTimerfd(), TFD_TIMER_ABSTIME, &flow->arrival_time, NULL);
+		//cout<<"Set Flow "<<timer.it_value.tv_sec<<"s "<<timer.it_value.tv_nsec/1000000<<" ms"<<endl;
+		//sleep(1);
 	}
 
 	while(!finflag){
@@ -355,14 +376,20 @@ int main(int argc, char* argv[]){
 			Traffic::Raw_Packet *pkt = flow_ev->takePkt();
 			if(flow_ev->getTimerfd()==monitor){
 				finflag = true;
+				cout<<"Terminating...\n";
 				break;
 			}
 			/*Generate Send Pkt job*/
 			if(pkt != NULL){
 				auto job = new Threadpool::Job::callback([pkt, &socket_address](Threadpool::Worker& w)
 						{
-							if (sendto(w.getSocket(), pkt->getframe(), pkt->getLen()+Traffic::ETHERLEN, 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0)
-						    cout<<"Send failed\n";
+							const std::unique_ptr<Traffic::Raw_Packet> data(pkt);
+							if (sendto(w.getSocket(), data->getframe(), data->getLen()+Traffic::ETHERLEN, 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0){
+								perror("Send Fail \n");
+								exit(-1);
+							}
+							//else cout<<"sent "<<data->getLen()<<endl;
+
 							return Threadpool::Job::Type::NORMAL;
 						});
 				pool.push(job);
@@ -377,6 +404,7 @@ int main(int argc, char* argv[]){
 							flow_ev->arrival_time.it_value.tv_sec += flow_ev->arrival_time.it_value.tv_nsec/1000000000;
 							flow_ev->arrival_time.it_value.tv_nsec = flow_ev->arrival_time.it_value.tv_nsec%1000000000;
 							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
+							//cout<<"GenPkt "<<flow_ev->arrival_time.it_value.tv_sec<<" "<<flow_ev->arrival_time.it_value.tv_nsec/1000000<<endl;
 							return Threadpool::Job::Type::NORMAL;
 						});
 				pool.push(job);
@@ -390,13 +418,14 @@ int main(int argc, char* argv[]){
 						{
 							std::uniform_int_distribution<int> SIdx(0,Servers.size()-1);
 							std::uniform_int_distribution<int> CIdx(0,Clients.size()-1);
-							struct itimerspec arrtime;
 							flow_ev->setFlow(Servers[SIdx(flow_ev->generator)], Clients[CIdx(flow_ev->generator)],  w.FlowLenDist(flow_ev->generator), PktDist);
 							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
+							//cout<<"Set Flow "<<flow_ev->arrival_time.it_value.tv_sec<<" "<<flow_ev->arrival_time.it_value.tv_nsec/1000000<<endl;
 							return Threadpool::Job::Type::NORMAL;
 						});
 				pool.push(job);
 			}
+			//cout<<"Size: "<<pool.JobNum() << "\n";
 		}//events forloop
 	}//epoll wait while loop
 
