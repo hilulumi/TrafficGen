@@ -436,7 +436,7 @@ int main(int argc, char* argv[]){
 							//if(nsec<0 && sec>0)
 							//	{sec--; nsec+=1000000000;}
 							//printf("Gen pkt %ld s %ld ns %d bytes\n",sec,nsec,len);
-							//return Threadpool::Job::Type::NORMAL;
+							return Threadpool::Job::Type::NORMAL;
 						});
 
 				pool.push(job);
