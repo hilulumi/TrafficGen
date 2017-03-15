@@ -59,7 +59,7 @@ int ResolveModel(string S, Threadpool::Prob::Model &t, double &a, double &b){
 
 int main(int argc, char* argv[]){
 	int c;
-	int ActiveFlows = 1, duration = 10;
+	unsigned int ActiveFlows = 1, duration = 10;
 	char *ServerHostFile = NULL, *ClientHostFile = NULL, *IfName = NULL, *PktFile=NULL;
 	std::string FlowArrival(DEFAULT_DISTR);
 	std::string PktArrival(DEFAULT_DISTR);
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]){
 	/**************************Set Max File Discriptor***************************/
 	struct rlimit rlim;
 	getrlimit(RLIMIT_NOFILE, &rlim);
-	rlim.rlim_cur = (ActiveFlows+100<rlim.rlim_max)?ActiveFlows+100:rlim.rlim_max;
+	rlim.rlim_cur = (ActiveFlows+100 < rlim.rlim_max) ? ActiveFlows+100 : rlim.rlim_max;
 	setrlimit(RLIMIT_NOFILE, &rlim);
 	//getrlimit(RLIMIT_NOFILE, &rlim);
 
@@ -335,9 +335,9 @@ int main(int argc, char* argv[]){
 	}
 	timerfd_settime(monitor, TFD_TIMER_ABSTIME, &monitorT, NULL);
 
-	Threadpool::Pool pool(FlowArr_D, FlowLen_D);
+	Threadpool::Pool pool(PktArr_D, FlowLen_D);
 
-	for(int i; i<ActiveFlows; i++){
+	for(int i; i < (int)ActiveFlows; i++){
 		struct epoll_event *ev = new struct epoll_event[1];
 		int timefd = timerfd_create(CLOCK_REALTIME, 0);
 		int sidx, cidx;
@@ -360,6 +360,7 @@ int main(int argc, char* argv[]){
 		//sleep(1);
 	}
 
+	unsigned long cnt = 0;
 	while(!finflag){
 		nfds = epoll_wait(epollfd, events, ActiveFlows+1, -1);
 		if (nfds == -1) {
@@ -379,15 +380,19 @@ int main(int argc, char* argv[]){
 				auto job = new Threadpool::Job::callback([pkt, &socket_address](Threadpool::Worker& w)
 						{
 							const std::unique_ptr<Traffic::Raw_Packet> data(pkt);
-							if (sendto(w.getSocket(), data->getframe(), data->getLen()+Traffic::ETHERLEN, 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0){
-								perror("Send Fail \n");
-								exit(-1);
+							//for(int i=0; i<10;i++)
+							{
+								if (sendto(w.getSocket(), data->getframe(), data->getLen()+Traffic::ETHERLEN, 0, (struct sockaddr*)&socket_address, sizeof(struct sockaddr_ll)) < 0){
+									perror("Send Fail \n");
+									exit(-1);
+								}
+								//data->reset_pkt2();
+								//else cout<<"sent "<<data->getLen()<<endl;
 							}
-							//else cout<<"sent "<<data->getLen()<<endl;
-
 							return Threadpool::Job::Type::NORMAL;
 						});
 				pool.push(job);
+				cnt++;
 			}
 			/*Generate a New Pkt Job*/
 			if(flow_ev->getRemain() != 0){
@@ -421,12 +426,11 @@ int main(int argc, char* argv[]){
 						});
 				pool.push(job);
 			}
-			//cout<<"Size: "<<pool.JobNum() << "\n";
 		}//events forloop
 	}//epoll wait while loop
 
 	pool.terminate();
-
+	cout <<"Sent "<<cnt<<" Packets"<<endl;
 
 	return 0;
 }

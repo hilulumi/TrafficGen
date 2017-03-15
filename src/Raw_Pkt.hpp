@@ -167,6 +167,7 @@ public:
 		ether->ether_type = htons(protocol);
 	}
 	virtual void reset_pkt(int a, int b, int c, unsigned long d)	{}
+	virtual void reset_pkt2()	{}
 	size_t getLen()	{
 		return pkt_len;
 	}
@@ -214,6 +215,11 @@ public:
 		ip->check = checksum((uint16_t*)ip, IPV4LEN);
 		//std::cout << ip->saddr <<std::endl;
 	}
+	virtual void reset_pkt2(){
+		ip->saddr = htonl(ntohl(ip->saddr)+1);
+		ip->check = 0;
+		ip->check = checksum((uint16_t*)ip, IPV4LEN);
+	}
 };
 
 class IPV6_t : public Raw_Packet{
@@ -258,6 +264,9 @@ public:
 	virtual void reset_pkt(int start_id, int sent_pkt, int flow_length=0, unsigned long sent_byte=0){
 		uint16_t id = (uint16_t)start_id + (uint16_t)sent_pkt;
 		ip->ip6_flow = htonl ((6 << 28) | (id << 20) | 0);
+	}
+	virtual void reset_pkt2(){
+		ip->ip6_src.s6_addr16[7] = htons(ntohs(ip->ip6_src.s6_addr16[7]+1));
 	}
 };
 
@@ -311,13 +320,27 @@ public:
 			tcp->th_ack = htonl(start_id + sent_byte + 500);
 		}
 		if(T::isIP4()){
-				tcp->th_sum = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)tcp, T::pkt_len - IPV4LEN, IPPROTO_TCP);
+			tcp->th_sum = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)tcp, T::pkt_len - IPV4LEN, IPPROTO_TCP);
 		}
 		else{
 			tcp->th_sum = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)tcp, T::pkt_len - IPV6LEN, IPPROTO_TCP);
 		}
 
 	}
+
+	virtual void reset_pkt2(){
+			//T::reset_pkt2();
+			tcp->th_dport = htons(0xffff & (ntohs(tcp->th_dport)+1));
+			tcp->th_sum = 0;
+			if(T::isIP4()){
+					tcp->th_sum = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)tcp, T::pkt_len - IPV4LEN, IPPROTO_TCP);
+			}
+			else{
+				tcp->th_sum = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)tcp, T::pkt_len - IPV6LEN, IPPROTO_TCP);
+			}
+
+		}
+
 };
 
 template<class T>
@@ -357,6 +380,19 @@ public:
 			udp->uh_sum = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV6LEN, IPPROTO_UDP);
 		}
 	}
+	virtual void reset_pkt2(){
+		//T::reset_pkt2();
+		udp->uh_dport = htons( 0xffff & (ntohs(udp->uh_dport)+1));
+		udp->uh_sum = 0;
+		if(T::isIP4()){
+			udp->uh_ulen = htons(T::pkt_len - IPV4LEN);
+			udp->uh_sum = tcpudp4_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV4LEN, IPPROTO_UDP);
+		}
+		else{
+			udp->uh_ulen = htons(T::pkt_len - IPV6LEN);
+			udp->uh_sum = tcpudp6_checksum((uint8_t*)(T::ip), (uint16_t*)udp, T::pkt_len - IPV6LEN, IPPROTO_UDP);
+		}
+	}
 };
 
 class ICMP_t : public IPV4_t{
@@ -385,7 +421,11 @@ public:
 		icmp->un.echo.sequence = htons(sent_pkt);
 		icmp->checksum = checksum((uint16_t*)icmp, pkt_len - IPV4LEN);
 	}
-
+	virtual void reset_pkt2(){
+		IPV4_t::reset_pkt2();
+		icmp->checksum = 0;
+		icmp->checksum = checksum((uint16_t*)icmp, pkt_len - IPV4LEN);
+	}
 };
 
 class ICMP6_t : public IPV6_t{
@@ -411,6 +451,11 @@ public:
 	virtual void reset_pkt(int start_id, int sent_pkt, int flow_length=0, unsigned long sent_byte=0){
 		icmp->icmp6_id = htons(start_id);
 		icmp->icmp6_seq = htons(sent_pkt);
+		icmp->icmp6_cksum = tcpudp6_checksum((uint8_t*)ip, (uint16_t*)icmp, (uint16_t)(pkt_len - IPV6LEN), IPPROTO_ICMPV6);
+	}
+	virtual void reset_pkt2(){
+		IPV6_t::reset_pkt2();
+		icmp->icmp6_cksum = 0;
 		icmp->icmp6_cksum = tcpudp6_checksum((uint8_t*)ip, (uint16_t*)icmp, (uint16_t)(pkt_len - IPV6LEN), IPPROTO_ICMPV6);
 	}
 };
