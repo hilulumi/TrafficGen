@@ -1,1 +1,1 @@
-sudo ./TrafficGen -s host.txt -F 2000 -f "weibull(0.75,8.399)" -L "lognormal(2.49134, 0.75)" -p "lognormal(3.85834,0.75)" -t 10 -i eth0 -l Packet_Distribution.txt
+./TrafficGen -s host.txt -F 1 -f "weibull(0.75,8.399)" -L "lognormal(2.49134, 0.75)" -p "lognormal(3.0145869,0.75)" -t 1 -i eth1 -l Packet_Distribution.txt

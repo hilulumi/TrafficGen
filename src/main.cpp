@@ -316,14 +316,14 @@ int main(int argc, char* argv[]){
 	struct itimerspec timer, monitorT;
 	int epollfd, monitor, nfds;
 	bool finflag = false;
-
+	struct timespec start;
 
 	clock_gettime(CLOCK_REALTIME, &(timer.it_value));
 	timer.it_value.tv_sec = timer.it_value.tv_sec+ 5;
 	timer.it_interval.tv_sec = duration;
 	timer.it_interval.tv_nsec = 0;
 	epollfd = epoll_create(1);
-
+	start = timer.it_value;
 	monitorT = timer;
 	monitorT.it_value.tv_sec = monitorT.it_value.tv_sec + duration;
 	monitor = timerfd_create(CLOCK_REALTIME, 0);
@@ -337,7 +337,7 @@ int main(int argc, char* argv[]){
 
 	Threadpool::Pool pool(PktArr_D, FlowLen_D);
 
-	for(int i; i < (int)ActiveFlows; i++){
+	for(int i=0; i < (int)ActiveFlows; i++){
 		struct epoll_event *ev = new struct epoll_event[1];
 		int timefd = timerfd_create(CLOCK_REALTIME, 0);
 		int sidx, cidx;
@@ -360,7 +360,9 @@ int main(int argc, char* argv[]){
 		//sleep(1);
 	}
 
-	unsigned long cnt = 0;
+	unsigned long cnt = 0, flow_cnt=0;
+	struct timespec diff, current;
+	long int S,N;
 	while(!finflag){
 		nfds = epoll_wait(epollfd, events, ActiveFlows+1, -1);
 		if (nfds == -1) {
@@ -368,17 +370,26 @@ int main(int argc, char* argv[]){
 			exit(-1);
 		}
 		for(int j=0; j<nfds;j++){
+
 			Traffic::Flow* flow_ev = (Traffic::Flow*)(events[j].data.ptr);
 			Traffic::Raw_Packet *pkt = flow_ev->takePkt();
+
+
+
 			if(flow_ev->getTimerfd()==monitor){
 				finflag = true;
 				cout<<"Terminating...\n";
 				break;
 			}
+
+			clock_gettime(CLOCK_REALTIME, &current);
+			diff = flow_ev->arrival_time.it_value;
 			/*Generate Send Pkt job*/
 			if(pkt != NULL){
 				auto job = new Threadpool::Job::callback([pkt, &socket_address](Threadpool::Worker& w)
 						{
+							//struct timespec start, end;
+							//clock_gettime(CLOCK_REALTIME, &start);
 							const std::unique_ptr<Traffic::Raw_Packet> data(pkt);
 							//for(int i=0; i<10;i++)
 							{
@@ -386,51 +397,96 @@ int main(int argc, char* argv[]){
 									perror("Send Fail \n");
 									exit(-1);
 								}
-								//data->reset_pkt2();
+								data->reset_pkt2();
 								//else cout<<"sent "<<data->getLen()<<endl;
 							}
+							//clock_gettime(CLOCK_REALTIME, &end);
+							//unsigned long sec = end.tv_sec - start.tv_sec;
+							//unsigned long nsec = end.tv_nsec - start.tv_nsec;
+							//if(nsec<0 && sec>0)
+							//	{sec--; nsec+=1000000000;}
+							//printf("Send %ld s %ld ns %d bytes\n",sec,nsec, data->getLen()+Traffic::ETHERLEN);
 							return Threadpool::Job::Type::NORMAL;
 						});
+
 				pool.push(job);
+				//cnt += 10;
 				cnt++;
 			}
+			//clock_gettime(CLOCK_REALTIME, &p1);
 			/*Generate a New Pkt Job*/
-			if(flow_ev->getRemain() != 0){
+			if(flow_ev->getRemain() > 0){
+				//clock_gettime(CLOCK_REALTIME, &p2);
 				auto job = new Threadpool::Job::callback([flow_ev, &PktDist](Threadpool::Worker& w)
 						{
+							//struct timespec start, end;
+							//clock_gettime(CLOCK_REALTIME, &start);
 							int len = flow_ev->getPktLen(PktDist);
 							flow_ev->genPkt(len);
-							flow_ev->arrival_time.it_value.tv_nsec += w.InterPktDist(flow_ev->generator)*1000000;
+							double tmp = w.InterPktDist(flow_ev->generator);
+							flow_ev->arrival_time.it_value.tv_nsec += tmp*1000000;
 							flow_ev->arrival_time.it_value.tv_sec += flow_ev->arrival_time.it_value.tv_nsec/1000000000;
 							flow_ev->arrival_time.it_value.tv_nsec = flow_ev->arrival_time.it_value.tv_nsec%1000000000;
 							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
+							//printf("%.2f\n",tmp);
 							//cout<<"GenPkt "<<flow_ev->arrival_time.it_value.tv_sec<<" "<<flow_ev->arrival_time.it_value.tv_nsec/1000000<<endl;
-							return Threadpool::Job::Type::NORMAL;
+							//clock_gettime(CLOCK_REALTIME, &end);
+							//unsigned long sec = end.tv_sec - start.tv_sec;
+							//unsigned long nsec = end.tv_nsec - start.tv_nsec;
+							//if(nsec<0 && sec>0)
+							//	{sec--; nsec+=1000000000;}
+							//printf("Gen pkt %ld s %ld ns %d bytes\n",sec,nsec,len);
+							//return Threadpool::Job::Type::NORMAL;
 						});
+
 				pool.push(job);
+				//clock_gettime(CLOCK_REALTIME, &p3);
+
 			}
 			/*Generate a New Flow Job*/
 			else{
-				timer.it_value.tv_nsec += FlowArr_D(flow_ev->generator)*1000000;
+				//clock_gettime(CLOCK_REALTIME, &p2);
+				double tmp = FlowArr_D(flow_ev->generator);
+				//printf("Flow come %f\n", tmp);
+				timer.it_value.tv_nsec += tmp*1000000;
 				timer.it_value.tv_sec += timer.it_value.tv_nsec/1000000000;
 				timer.it_value.tv_nsec = timer.it_value.tv_nsec%1000000000;
 				flow_ev->arrival_time = timer;
 				auto job = new Threadpool::Job::callback([flow_ev, epollfd, &Servers, &Clients, &PktDist](Threadpool::Worker& w)
 						{
+							//struct timespec start, end;
+							//clock_gettime(CLOCK_REALTIME, &start);
 							std::uniform_int_distribution<int> SIdx(0,Servers.size()-1);
 							std::uniform_int_distribution<int> CIdx(0,Clients.size()-1);
-							flow_ev->setFlow(Servers[SIdx(flow_ev->generator)], Clients[CIdx(flow_ev->generator)],  w.FlowLenDist(flow_ev->generator), PktDist);
+							int flen = w.FlowLenDist(flow_ev->generator);
+							//printf("Flow Len %d\n", flen);
+							flow_ev->setFlow(Servers[SIdx(flow_ev->generator)], Clients[CIdx(flow_ev->generator)], flen, PktDist);
 							timerfd_settime(flow_ev->getTimerfd(), TFD_TIMER_ABSTIME, &(flow_ev->arrival_time), NULL);
-							//cout<<"Set Flow "<<flow_ev->arrival_time.it_value.tv_sec<<" "<<flow_ev->arrival_time.it_value.tv_nsec/1000000<<endl;
+
+							//clock_gettime(CLOCK_REALTIME, &end);
+							//unsigned long sec = end.tv_sec - start.tv_sec;
+							//unsigned long nsec = end.tv_nsec - start.tv_nsec;
+							//if(nsec<0 && sec>0)
+							//	{sec--; nsec+=1000000000;}
+							//printf("Gen Flow %ld s %ld ns\n",sec,nsec );
 							return Threadpool::Job::Type::NORMAL;
 						});
 				pool.push(job);
+				flow_cnt++;
+				//clock_gettime(CLOCK_REALTIME, &p3);
 			}
+
+			S = current.tv_sec - diff.tv_sec;
+			N = current.tv_nsec - diff.tv_nsec;
+			if(N<0 && S>0)
+				{S--; N+=1000000000;}
+			printf("diff %ld s, %ld ns\n", S, N);
+
 		}//events forloop
 	}//epoll wait while loop
 
 	pool.terminate();
-	cout <<"Sent "<<cnt<<" Packets"<<endl;
+	cout <<"Sent "<<cnt<<" Packets "<<flow_cnt<<" Flows"<<endl;
 
 	return 0;
 }
